@@ -3,6 +3,8 @@ from pyqtgraph.Qt import QtGui, QtCore
 import pyqtgraph as pg
 import numpy as np
 import signal 
+import struct
+import matplotlib.pyplot as plt
 
 class BasePlot(object):
     def __init__(self, stream, **kwargs):
@@ -18,7 +20,7 @@ class BasePlot(object):
         self.view.setCentralItem(self.layout)
         self.view.show()
         self.view.setWindowTitle('Software Oscilloscope')
-        self.view.resize(800,600)
+        self.view.resize(1000,800)
         self.plot_list = []
 
     def open_stream(self):
@@ -38,17 +40,36 @@ class BasePlot(object):
         self.app.exit()
 
     def plot_init(self):
-        for i in xrange(20):
+        for i in xrange(30):
             trial_data = self.stream.readline().rstrip().split(',')
+
         for i in xrange(len(trial_data)):
             new_plot = self.layout.addPlot()
             new_plot.plot(np.zeros(250))
             self.plot_list.append(new_plot.listDataItems()[0])
             self.layout.nextRow()
+ 
+        angle = np.arange(0,360)
+        theta = angle*2*np.pi/360
+        
+        xData = 10000*np.cos(theta)
+        yData = 10000*np.sin(theta)
+        self.polar_plot = pg.plot()      
+        new_plot = self.polar_plot
+        new_plot.addLine(x=0, pen=0.2)
+        new_plot.addLine(y=0, pen=0.2)
+        new_plot.plot(xData, yData, pen='b',symbol='o')
+        self.polar_line = new_plot.listDataItems()[0]
+        self.index = 0;
         
     def update(self):
+
         stream_data = self.stream.readline().rstrip().split(',')
-        for data, line in zip(stream_data, self.plot_list):
+
+        theta = int(stream_data[0])*np.pi/2/90
+        point = int(stream_data[0])
+
+        for i, (data, line) in enumerate(zip(stream_data, self.plot_list)):
             line.informViewBoundsChanged()
             line.xData = np.arange(len(line.yData))
             line.yData = np.roll(line.yData, -1)
@@ -56,15 +77,26 @@ class BasePlot(object):
             line.xClean = line.yClean = None
             line.xDisp = None
             line.yDisp = None
-            line.updateItems()
-            line.sigPlotChanged.emit(line)
- 
+
+            if(int(data)>2000):
+                data = 2000
+            if i != 0 :
+                self.polar_line.xData[(point+(i-1)*90)%360] = int(data) * np.cos(theta+np.pi*(i-1)/2)
+                self.polar_line.yData[(point+(i-1)*90)%360] = int(data) * np.sin(theta+np.pi*(i-1)/2)                
+
+        line = self.polar_line
+        line.xClean = line.yClean = None
+        line.xDisp = None
+        line.yDisp = None
+        line.updateItems()
+        line.sigPlotChanged.emit(line)
+        
     def start(self):
         self.open_stream()
         self.plot_init()
         timer = QtCore.QTimer()
         timer.timeout.connect(self.update)
-        timer.start(0)   
+        timer.start(0)
         if (sys.flags.interactive != 1) or not hasattr(QtCore, 'PYQT_VERSION'):
             self.app.exec_()   
 
